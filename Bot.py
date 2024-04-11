@@ -1,25 +1,32 @@
 import telebot
 from telebot import types
 from pytube import YouTube
-from moviepy.editor import VideoFileClip
-import os
+
+
 
 bot = telebot.TeleBot('6376347293:AAHKkjC5kaMJmuQpjrPhjDxUdF7Cb0rRO9I')
 
+
 user_states = {}
 links=[]
+selected_audio_formats = []
+
+
 @bot.message_handler(commands=['start', 'help'])
 def start(message):
         
+
+        bot.send_message(message.chat.id, "Hello! I'm a bot that can manage your youtube account.")
+        initialize_main_buttons(message.chat.id)
+
+def initialize_main_buttons(chat_id):
         keyboard = types.InlineKeyboardMarkup(); 
        
         key_download_video = types.InlineKeyboardButton(text='Download Video', callback_data='Download_Video')
         key_video_to_audio = types.InlineKeyboardButton(text='Convert Video to Audio', callback_data='Convert_Video_to_Audio')
         
         keyboard.add(key_video_to_audio, key_download_video)
-
-        bot.send_message(message.chat.id, "Hello! I'm a bot that can manage your youtube account. Pick an option.", reply_markup=keyboard)
-
+        bot.send_message(chat_id,"Pick option",reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -27,25 +34,42 @@ def handle_options_button(call):
         user_id = call.from_user.id
         if call.data == 'Download_Video':
                user_states[user_id] = 'download_video'
+               bot.delete_message(call.message.chat.id,call.message.id )
                bot.send_message(call.message.chat.id, "Send a link")        
         elif call.data == 'Convert_Video_to_Audio':
                 user_states[user_id] = 'convert_video_to_audio'
-                bot.send_message(call.message.chat.id, "Send a youtube video link and how you'd like to name audio file: 'link, file name'")
+                bot.delete_message(call.message.chat.id,call.message.id )
+                bot.send_message(call.message.chat.id, "Send a youtube video link")
         elif call.data == '360p':
+              bot.delete_message(call.message.chat.id, call.message.id)
               get_video(links.pop(),call.message.chat.id, '360p')
         elif call.data == '720p':
+              bot.delete_message(call.message.chat.id, call.message.id)
+              
               get_video(links.pop(),call.message.chat.id, '720p')
         elif call.data == '1080p':
+              bot.delete_message(call.message.chat.id, call.message.id)
+              
               get_video(links.pop(),call.message.chat.id, '1080p')
         elif call.data == '480p':
+              bot.delete_message(call.message.chat.id, call.message.id)
+              
               get_video(links.pop(),call.message.chat.id, '480p')
         elif call.data == '240p':
+              bot.delete_message(call.message.chat.id, call.message.id)
+              
               get_video(links.pop(),call.message.chat.id, '240p')    
         elif call.data == '1440p':
+              bot.delete_message(call.message.chat.id, call.message.id)
+              
               get_video(links.pop(),call.message.chat.id, '1440p') 
         elif call.data == '2160p':
+              bot.delete_message(call.message.chat.id, call.message.id)
               get_video(links.pop(),call.message.chat.id, '2160p') 
-
+        elif int(call.data) in selected_audio_formats:
+              bot.delete_message(call.message.chat.id, call.message.id)
+              get_vid_toAud(links.pop(), call.message.chat.id, call.data)
+               
 
 @bot.message_handler(func=lambda message: message.from_user.id in user_states)
 def handle_user_response(message):
@@ -55,10 +79,8 @@ def handle_user_response(message):
         links.append(message.text)
         get_quality(message)
     elif state == 'convert_video_to_audio':
-        get_vid_toAud(message)
-  
-
-
+        links.append(message.text)
+        get_format(message)
 
 
 def get_video(Url,chat_id, desired_quality):
@@ -69,22 +91,28 @@ def get_video(Url,chat_id, desired_quality):
             
             selected_stream = None
             for stream in video_streams:
-                  if stream.resolution == desired_quality:
+                  if stream.resolution == desired_quality and stream.includes_audio_track:
                         selected_stream = stream
                         break
 
             if selected_stream:
                 video_path = '\\videos'
+                bot.send_message(chat_id, "downloading the video...")
                 selected_stream.download(video_path)
 
                 video_file = open(f'{video_path}\\{selected_stream.default_filename}', 'rb')
                 bot.send_chat_action(chat_id, 'upload_video')
                 bot.send_video(chat_id, video_file)
+                
+
+                initialize_main_buttons(chat_id)
             else:
                   bot.send_message(chat_id, "Desired quality not found:(")
-                
+                  initialize_main_buttons(chat_id)
         except Exception as e:
             bot.send_message(chat_id, f'Oops! An error occured! {e}')
+            initialize_main_buttons(chat_id)
+
 
 def get_quality(message):
         keyboard = types.InlineKeyboardMarkup(); 
@@ -101,35 +129,42 @@ def get_quality(message):
         bot.send_message(message.chat.id, "Pick quality", reply_markup=keyboard)
         
 
-
-def get_vid_toAud(message):
+def get_vid_toAud(Url, chat_id, desired_format):
         try:
-            url = message.text.split(", ")[0]
-            yt = YouTube(url)
-            bot.send_message(message.from_user.id, "Getting the video...")
-            stream = yt.streams.filter(file_extension='mp4').first()
-            video_path = stream.download("\\videos")
+            yt = YouTube(Url)
+            selected_audio_stream = yt.streams.get_by_itag(desired_format)
+            audio_file_path = '\\audios'
+            bot.send_message(chat_id, "downloading the audio...")
+
+            selected_audio_stream.download(audio_file_path)
             
-            
-            output_dir = 'audios'
-            os.makedirs(output_dir, exist_ok=True)
-
-            video = VideoFileClip(video_path)
-
-            
-            audio_path = os.path.join(output_dir, message.text.split(", ")[1])
-
-            video.audio.write_audiofile(f'{audio_path}.mp3', codec='libmp3lame')
-
-            bot.send_chat_action(message.chat.id, 'upload_audio')
-
-            audio_file = open(f'{audio_path}.mp3', 'rb')
-            bot.send_audio(message.chat.id, audio_file)
-
-            video.close()
+            with open(f'{audio_file_path}\\{selected_audio_stream.default_filename}', 'rb') as audio_file:
+                  bot.send_audio(chat_id, audio_file)
+            initialize_main_buttons(chat_id)
 
         except Exception as e:
-            bot.reply_to(message, f'Oops! An error occured! {e}')
+            bot.send_message(chat_id, f'Oops! An error occured! {e}')
+            initialize_main_buttons(chat_id)
 
+
+def get_format(message):
+    video_url = message.text
+
+    # Create a YouTube object
+    yt = YouTube(video_url)
+
+    # Get available audio streams
+    audio_streams = yt.streams.filter(only_audio=True)
+
+    # Create inline keyboard with audio format buttons
+    keyboard = types.InlineKeyboardMarkup()
+    for stream in audio_streams:
+        format_button = types.InlineKeyboardButton(text=stream.mime_type, callback_data=stream.itag)
+        selected_audio_formats.append(stream.itag)
+        keyboard.add(format_button)
+
+    # Send message with keyboard
+    bot.send_message(message.chat.id, "Pick audio format:", reply_markup=keyboard)
+      
 
 bot.polling(non_stop=True)
